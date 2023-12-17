@@ -9,6 +9,8 @@ def translit(word):
     for elem in word:
         if elem.lower() in dict_of_letters.keys():
             out += dict_of_letters[elem.lower()]
+        if elem.isdigit() or elem in ['(', ')']:
+            out += elem
         elif elem in [',', '.', '?', '!', ' ']:
             out += '_'
     return out.capitalize()
