@@ -7,91 +7,114 @@ try:
 
     import requests
     from bs4 import BeautifulSoup
+    from PyQt5 import uic, QtWidgets
+    from PyQt5.QtWidgets import QDialog, QApplication, QPushButton
 
+
+    class Spravochnik(QDialog):
+        def __init__(self):
+            super().__init__()
+            uic.loadUi('ui/getting.ui', self)
+            self.ok.clicked.connect(self.ok_func)
+
+        def ok_func(self):
+            global quality, i
+            quality = self.Q_line.text()
+            i = self.url_line.text()
+
+
+    max_len = 0
     url_sp = dict()
     ALL_DOWNLOADED = False
     EP_NEED_DOWNLOAD = None
     HEADERS = {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
-    NAME_OF_CATALOG = ''
+    NAME_OF_CATALOG = '1'
     INDEX = 0
+    TOTAL_LENGTH = 0
 
 
     class DirAlreadyMake(Exception):
         pass
 
+    class Parser:
+        def get_length(url):
+            global TOTAL_LENGTH
+            res = requests.get(url.split('|||')[1], headers=HEADERS, stream=True)
+            total_length = res.headers.get('content-length')
+            TOTAL_LENGTH += int(total_length)
 
-    def get_video(url, name):
-        name_season, url = url.split('|||')
-        try:
-            os.mkdir(NAME_OF_CATALOG)
-        except:
-            DirAlreadyMake()
-        try:
-            os.mkdir(f'{NAME_OF_CATALOG}/{name_season}')
-        except:
-            DirAlreadyMake()
-        print("Downloading %s" % name)
-        res = requests.get(url, headers=HEADERS, stream=True)
-        total_length = res.headers.get('content-length')
-        with open(f'{NAME_OF_CATALOG}/{name_season}/{name}.mp4', 'wb') as file:
-            dl = 0
-            len_downloaded = 0
-            for elem in res.iter_content(chunk_size=1024):
-                if elem:
-                    len_downloaded += 1024
-                    file.write(elem)
-                    dl += len(elem)
-                    file.write(elem)
-                    done = int(50 * dl / int(total_length))
-                    percents = str(round((dl / int(total_length)) * 100)) + '%'
-                    sys.stdout.write("\r%s MB\%s MB %s [%s%s]" % (
-                        str(round(len_downloaded / 1048576, 2)), str(round(int(total_length) / 1048576, 2)), percents,
-                        '=' * done, ' ' * (50 - done)))
+
+        def get_video(url, name):
+            name_season, url = url.split('|||')
+            try:
+                os.mkdir(NAME_OF_CATALOG)
+            except:
+                DirAlreadyMake()
+            try:
+                os.mkdir(f'{NAME_OF_CATALOG}/{name_season}')
+            except:
+                DirAlreadyMake()
+
+            print("Downloading %s" % name)
+            res = requests.get(url, headers=HEADERS, stream=True)
+            total_length = res.headers.get('content-length')
+            with open(f'{NAME_OF_CATALOG}/{name_season}/{name}.mp4', 'wb') as file:
+                dl = 0
+                len_downloaded = 0
+                for elem in res.iter_content(chunk_size=1024):
+                    if elem:
+                        len_downloaded += len(elem)
+                        file.write(elem)
+                        dl += len(elem)
+                        done = int(50 * dl / int(total_length))
+                        percents = str(round((dl / int(total_length)) * 100)) + '%'
+                        sys.stdout.write("\r%s MB\%s MB %s [%s%s]" % (
+                            str(round(len_downloaded / 1048576, 2)), str(round(int(total_length) / 1048576, 2)), percents,
+                            '=' * done, ' ' * (50 - done)))
+                        sys.stdout.flush()
+            print()
+            print("Downloaded! %s" % name)
+
+
+        def get_url(url_of_episode):
+            global NAME_OF_CATALOG
+            res = requests.get(url_of_episode, headers=HEADERS)
+            main = BeautifulSoup(res.text, 'html.parser')
+            div_parent = main.find('div', {'class': 'sector_border center'}).findNext('div').findNext('div').findNext('div')
+            div_of_url = dict()
+            current_key = '1 sezon'
+            current_ep = 0
+            for elem in div_parent:
+                if elem != '\n':
+                    if str(elem).split('<')[1][0] == 'h':
+                        current_key = translitname_of_file.translit(elem.text)
+                    elif str(elem).split('<')[1][0] == 'a':
+                        if current_key in div_of_url.keys():
+                            div_of_url[current_key].append('https://jut.su' + elem['href'])
+                        else:
+                            div_of_url[current_key] = ['https://jut.su' + elem['href']]
+                        current_ep += 1
+            NAME_OF_CATALOG = main.find('div', {'class': 'under_video_additional the_hildi'}).find('b').text
+            return div_of_url
+
+
+        def get_url_on_video(urls):
+            out = {}
+            for k, elem in urls.items():
+                for e in elem:
+                    res = requests.get(e, headers=HEADERS)
+                    main = BeautifulSoup(res.text, 'html.parser')
+                    video = main.find_all('source')
+                    outed = str(str(len(out) + 1) + ' url on video got')
+                    sys.stdout.write("\r%s" % outed)
                     sys.stdout.flush()
-        print()
-        print("Downloaded! %s" % name)
-
-
-    def get_url(url_of_episode):
-        global NAME_OF_CATALOG
-        res = requests.get(url_of_episode, headers=HEADERS)
-        main = BeautifulSoup(res.text, 'html.parser')
-        div_parent = main.find('div', {'class': 'sector_border center'}).findNext('div').findNext('div').findNext('div')
-        div_of_url = dict()
-        current_key = '1 sezon'
-        current_ep = 0
-        for elem in div_parent:
-            if elem != '\n':
-                if str(elem).split('<')[1][0] == 'h':
-                    current_key = translitname_of_file.translit(elem.text)
-                elif str(elem).split('<')[1][0] == 'a':
-                    if current_key in div_of_url.keys():
-                        div_of_url[current_key].append('https://jut.su' + elem['href'])
-                    else:
-                        div_of_url[current_key] = ['https://jut.su' + elem['href']]
-                    current_ep += 1
-        print(current_ep)
-        NAME_OF_CATALOG = main.find('div', {'class': 'under_video_additional the_hildi'}).find('b').text
-        return div_of_url
-
-
-    def get_url_on_video(urls):
-        out = {}
-        for k, elem in urls.items():
-            for e in elem:
-                res = requests.get(e, headers=HEADERS)
-                main = BeautifulSoup(res.text, 'html.parser')
-                video = main.find_all('source')
-                outed = str(str(len(out) + 1) + ' url on video got')
-                sys.stdout.write("\r%s" % outed)
-                sys.stdout.flush()
-                if video:
-                    video_url = [i['src'] for i in video]
-                    name_of_episode = translitname_of_file.translit(
-                        main.find('div', {'class': 'video_plate_title'}).text)
-                    out[name_of_episode] = k + '|||' + video_url[INDEX]
-        return out
+                    if video:
+                        video_url = [i['src'] for i in video]
+                        name_of_episode = translitname_of_file.translit(
+                            main.find('div', {'class': 'video_plate_title'}).text)
+                        out[name_of_episode] = k + '|||' + video_url[INDEX]
+            return out
 
 
     with open('err.txt', 'r') as file:
@@ -111,10 +134,13 @@ try:
     if OK:
         with open('err.txt', 'w') as file:
             file.write('')
-    i = input('url: ')
+    if __name__ == '__main__':
+        app = QApplication(sys.argv)
+        ex = Spravochnik()
+        ex.show()
+        sys.exit(app.exec_())
 
     while True:
-        quality = input('Quality (1080, 720, 480, 360): ')
         if quality.isdigit():
             if int(quality) in [1080, 720, 480, 360]:
                 if int(quality) == 1080:
@@ -131,6 +157,10 @@ try:
     url_sp = get_url_on_video(sp_of_url)
     sys.stdout.write("\r%s" % 'All url on video got\n')
     sys.stdout.flush()
+    for v in url_sp.values():
+        get_length(v)
+        print(f'\rGetting length: {round(TOTAL_LENGTH / 1048576, 1)} MB', end='')
+    print()
     for k, v in url_sp.items():
         EP_NEED_DOWNLOAD = k
         get_video(v, k)
